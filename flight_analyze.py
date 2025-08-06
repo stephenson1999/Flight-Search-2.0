@@ -297,4 +297,4 @@ class FlightSearch:
                         print(f"⚠️ Error fetching flight for {formatted_date} to {iata}: {e}")
 
                 else:
-                    print("Invalid flight detail choice.")
+                            print("Invalid flight detail choice.")
