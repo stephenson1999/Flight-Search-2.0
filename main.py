@@ -50,6 +50,7 @@ sheet_data = [
 
 
 ONIGIN_IATA = input("Step One: Please enter the Iata Code of you airport that you wish to departure (Fomate = Xxx):")
+print("Please wait a minute. ")
 start_date =datetime.today() + timedelta(days=1)
 end_date = datetime.today() + timedelta(days=180)
 departure_start = start_date.strftime("%Y-%m-%d")

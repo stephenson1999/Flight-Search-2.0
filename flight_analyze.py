@@ -68,17 +68,16 @@ class FlightSearch:
         return dates
 
     def get_flights(self, city_data):
-        #make varibles
         start_date = datetime.today() + timedelta(days=14)
         months_ahead = 6
         children = input("Step Two: Please enter the number of children you have:")
         adults = input("Step Three: Please enter the number of adults you have:")
-        flight_detils = input("Step Three: Please enter if you want this flight to be:\n"
-                        "nonstop   multi-leg   both \n")
-        
+        flight_details = input(
+            "Step Four: Please enter if you want this flight to be:\n"
+            "nonstop   multi-leg   both \n"
+        ).strip().lower()
 
-
-        # Generate one date per month (e.g., the 15th of each month)
+        # Generate one date per month (15th of each month)
         search_dates = []
         for i in range(months_ahead):
             year = (start_date.month + i - 1) // 12 + start_date.year
@@ -86,7 +85,7 @@ class FlightSearch:
             try:
                 date = datetime(year, month, 15)
             except ValueError:
-                # If the 15th doesn't exist (weird edge case), use last day of the month
+                # Use last day of month if 15th invalid
                 if month == 12:
                     next_month = datetime(year + 1, 1, 1)
                 else:
@@ -94,207 +93,106 @@ class FlightSearch:
                 date = next_month - timedelta(days=1)
             search_dates.append(date)
 
-        if flight_detils not in ["nonstop", "multi-leg", "both"]:
-            print("Sorry there must of been a type-o, please retry.")
-            flight_detils = input("Step Three: Please enter if you want this flight to be:\n"
-                    "nonstop   multi-leg   both \n")
-        if flight_detils == "nonstop":
-            for city_id in city_data:
-                data = city_data[city_id]
-                city = data['city']
-                iata = data['iataCode']
-                low_price = data['lowestPrice']  # The sheet's lowest price for the city
+        if flight_details not in ["nonstop", "multi-leg", "both"]:
+            print("Sorry, invalid choice. Please retry.")
+            return  # or loop again if you want
 
-                print(f"\n✈️ Searching for nonstop flights to {city} ({iata}) over the next 6 months:")
+        for city_id in city_data:
+            data = city_data[city_id]
+            city = data['city']
+            iata = data['iataCode']
+            low_price = data['lowestPrice']
 
-                for departure_date in search_dates:
-                    formatted_date = departure_date.strftime("%Y-%m-%d")
-                    print(f"🔍 Checking {formatted_date}")
+            print(f"\n✈️ Searching for {flight_details} flights to {city} ({iata}) over the next 6 months:")
 
-                    headers = {'Authorization': f'Bearer {self.token}'}
-                    params = {
-                        'originLocationCode': 'LAX',
-                        'destinationLocationCode': iata,
-                        'departureDate': formatted_date,
-                        'adults': adults,
-                        'children': children,
-                        'travelClass': 'ECONOMY',
-                        'currencyCode': 'USD',
-                        'max': 1,
-                        'nonStop': 'true'
-                    }
+            for departure_date in search_dates:
+                formatted_date = departure_date.strftime("%Y-%m-%d")
+                print(f"\n🔍 Checking {formatted_date}")
 
-                    try:
-                        response = requests.get(self.search_url, headers=headers, params=params)
-                        response.raise_for_status()
-                        flights = response.json()
+                headers = {'Authorization': f'Bearer {self.token}'}
+                params = {
+                    'originLocationCode': 'LAX',
+                    'destinationLocationCode': iata,
+                    'departureDate': formatted_date,
+                    'adults': adults,
+                    'children': children,
+                    'travelClass': 'ECONOMY',
+                    'currencyCode': 'USD',
+                    'max': 5 if flight_details != 'nonstop' else 1
+                }
+                # Add nonStop param only if searching nonstop flights exclusively
+                if flight_details == "nonstop":
+                    params['nonStop'] = 'true'
 
-                        if flights.get("data"):
-                            for flight_offer in flights["data"]:
-                                price_info = flight_offer["price"]
-                                currency = price_info["currency"]
-                                total_price = price_info["total"]
+                try:
+                    response = requests.get(self.search_url, headers=headers, params=params)
+                    response.raise_for_status()
+                    flights = response.json()
 
-                                # Compare the total price with the lowest price
-                        if float(total_price) < float(low_price):
-                            print(f"\n🔥 Breaking Deal! {city} - {total_price} {currency}")
-                            print(f"Price: {total_price} {currency}")
-                            for itinerary in flight_offer["itineraries"]:
-                                print("Itinerary:")
-                                for i, segment in enumerate(itinerary["segments"], 1):
-                                    dep = segment["departure"]
-                                    arr = segment["arrival"]
-                                    dep_time = dep["at"].replace("T", " ")
-                                    arr_time = arr["at"].replace("T", " ")
-                                    dep_iata = dep["iataCode"]
-                                    arr_iata = arr["iataCode"]
-                                    dep_term = dep.get("terminal", "N/A")
-                                    arr_term = arr.get("terminal", "N/A")
+                    if not flights.get("data"):
+                        print(f"No flights data returned for {formatted_date} to {city}.")
+                        continue
 
-                                    print(f"  Segment {i}:")
-                                    print(f"    Departure: {dep_time} from {dep_iata} terminal {dep_term}")
-                                    print(f"    Arrival:   {arr_time} at {arr_iata} terminal {arr_term}")
-                            print("\n---\n")
-                        else:
-                            print(f"No nonstop flights found on {formatted_date} for {city}.")
+                    found_deal = False
+                    for flight_offer in flights["data"]:
+                        price_info = flight_offer["price"]
+                        total_price = float(price_info["total"])
+                        currency = price_info["currency"]
 
-                    except requests.exceptions.RequestException as e:
-                        print(f"⚠️ Error fetching nonstop flight for {formatted_date} to {iata}: {e}")
+                        # Filter logic by flight_details type:
+                        if flight_details == "nonstop":
+                            # All offers here are nonstop (due to param)
+                            if total_price < float(low_price):
+                                found_deal = True
+                            else:
+                                continue
 
+                        elif flight_details == "multi-leg":
+                            # Only print if itinerary has >1 segment
+                            multi_leg_itineraries = [
+                                it for it in flight_offer["itineraries"] if len(it["segments"]) > 1
+                            ]
+                            if not multi_leg_itineraries:
+                                continue
+                            if total_price < float(low_price):
+                                found_deal = True
+                            else:
+                                continue
 
-        elif flight_detils == "multi-leg":
-            for city_id in city_data:
-                data = city_data[city_id]
-                city = data['city']
-                iata = data['iataCode']
-                low_price = data['lowestPrice']
+                        else:  # both
+                            if total_price < float(low_price):
+                                found_deal = True
+                            else:
+                                continue
 
-                print(f"\n✈️ Searching for multi-leg flights to {city} ({iata}) over the next 6 months:")
+                        # Print flight offer details
+                        print(f"\n🔥 Breaking Deal! {city} - {total_price} {currency}")
+                        print(f"Price: {total_price} {currency}")
+                        print("Itinerary:")
+                        # If multi-leg only, print only multi-leg itineraries
+                        itineraries_to_print = flight_offer["itineraries"]
+                        if flight_details == "multi-leg":
+                            itineraries_to_print = [
+                                it for it in flight_offer["itineraries"] if len(it["segments"]) > 1
+                            ]
+                        for itinerary in itineraries_to_print:
+                            for i, segment in enumerate(itinerary["segments"], 1):
+                                dep = segment["departure"]
+                                arr = segment["arrival"]
+                                dep_time = dep["at"].replace("T", " ")
+                                arr_time = arr["at"].replace("T", " ")
+                                dep_iata = dep["iataCode"]
+                                arr_iata = arr["iataCode"]
+                                dep_term = dep.get("terminal", "N/A")
+                                arr_term = arr.get("terminal", "N/A")
 
-                for departure_date in search_dates:
-                    formatted_date = departure_date.strftime("%Y-%m-%d")
-                    print(f"🔍 Checking {formatted_date}")
+                                print(f"  Segment {i}:")
+                                print(f"    Departure: {dep_time} from {dep_iata} terminal {dep_term}")
+                                print(f"    Arrival:   {arr_time} at {arr_iata} terminal {arr_term}")
+                        print("\n---\n")
 
-                    headers = {'Authorization': f'Bearer {self.token}'}
-                    params = {
-                        'originLocationCode': 'LAX',
-                        'destinationLocationCode': iata,
-                        'departureDate': formatted_date,
-                        'adults': adults,
-                        'children': children,
-                        'travelClass': 'ECONOMY',
-                        'currencyCode': 'USD',
-                        'max': 5  # increase to get a variety of options
-                    }
+                    if not found_deal:
+                        print(f"No {flight_details} flights under {low_price} USD found on {formatted_date} for {city}.")
 
-                    try:
-                        response = requests.get(self.search_url, headers=headers, params=params)
-                        response.raise_for_status()
-                        flights = response.json()
-
-                        if flights.get("data"):
-                            found_multi_leg = False
-
-                            for flight_offer in flights["data"]:
-                                price_info = flight_offer["price"]
-                                total_price = float(price_info["total"])
-                                currency = price_info["currency"]
-
-                                # Check if any itinerary is multi-leg
-                                for itinerary in flight_offer["itineraries"]:
-                                    if len(itinerary["segments"]) > 1:
-                                        if total_price < float(low_price):
-                                            print(f"\n🔥 Breaking Deal! {city} - {total_price} {currency}")
-                                            print(f"Price: {total_price} {currency}")
-                                            print("Itinerary:")
-                                            for i, segment in enumerate(itinerary["segments"], 1):
-                                                dep = segment["departure"]
-                                                arr = segment["arrival"]
-                                                dep_time = dep["at"].replace("T", " ")
-                                                arr_time = arr["at"].replace("T", " ")
-                                                dep_iata = dep["iataCode"]
-                                                arr_iata = arr["iataCode"]
-                                                dep_term = dep.get("terminal", "N/A")
-                                                arr_term = arr.get("terminal", "N/A")
-
-                                                print(f"  Segment {i}:")
-                                                print(f"    Departure: {dep_time} from {dep_iata} terminal {dep_term}")
-                                                print(f"    Arrival:   {arr_time} at {arr_iata} terminal {arr_term}")
-                                            print("\n---\n")
-                                            found_multi_leg = True
-                                        break  # Only print one valid multi-leg itinerary per offer
-
-                            if not found_multi_leg:
-                                print(f"No multi-leg flights found on {formatted_date} for {city}.")
-                        else:
-                            print(f"No flights data returned for {formatted_date} to {city}.")
-
-                    except requests.exceptions.RequestException as e:
-                        print(f"⚠️ Error fetching multi-leg flight for {formatted_date} to {iata}: {e}")
-
-
-        elif flight_detils == "both":
-            for city_id in city_data:
-                data = city_data[city_id]
-                city = data['city']
-                iata = data['iataCode']
-                low_price = data['lowestPrice']  # The sheet's lowest price for the city
-
-                print(f"\n✈️ Searching for both nonstop and multi-leg flights to {city} ({iata}) over the next 6 months:")
-
-                for departure_date in search_dates:
-                    formatted_date = departure_date.strftime("%Y-%m-%d")
-                    print(f"🔍 Checking {formatted_date}")
-
-                    headers = {'Authorization': f'Bearer {self.token}'}
-                    params = {
-                        'originLocationCode': 'LAX',
-                        'destinationLocationCode': iata,
-                        'departureDate': formatted_date,
-                        'adults': adults,
-                        'children': children,
-                        'travelClass': 'ECONOMY',
-                        'currencyCode': 'USD',
-                        'max': 1
-                        # no 'nonStop' param, so all flights included
-                    }
-
-                    try:
-                        response = requests.get(self.search_url, headers=headers, params=params)
-                        response.raise_for_status()
-                        flights = response.json()
-
-                        if flights.get("data"):
-                            for flight_offer in flights["data"]:
-                                price_info = flight_offer["price"]
-                                currency = price_info["currency"]
-                                total_price = price_info["total"]
-
-                                # Compare the total price with the lowest price
-                        if float(total_price) < float(low_price):
-                            print(f"\n🔥 Breaking Deal! {city} - {total_price} {currency}")
-                            print(f"Price: {total_price} {currency}")
-                            for itinerary in flight_offer["itineraries"]:
-                                print("Itinerary:")
-                                for i, segment in enumerate(itinerary["segments"], 1):
-                                    dep = segment["departure"]
-                                    arr = segment["arrival"]
-                                    dep_time = dep["at"].replace("T", " ")
-                                    arr_time = arr["at"].replace("T", " ")
-                                    dep_iata = dep["iataCode"]
-                                    arr_iata = arr["iataCode"]
-                                    dep_term = dep.get("terminal", "N/A")
-                                    arr_term = arr.get("terminal", "N/A")
-
-                                    print(f"  Segment {i}:")
-                                    print(f"    Departure: {dep_time} from {dep_iata} terminal {dep_term}")
-                                    print(f"    Arrival:   {arr_time} at {arr_iata} terminal {arr_term}")
-                            print("\n---\n")
-                        else:
-                            print(f"No flights found on {formatted_date} for {city}.")
-
-                    except requests.exceptions.RequestException as e:
-                        print(f"⚠️ Error fetching flight for {formatted_date} to {iata}: {e}")
-
-                else:
-                            print("Invalid flight detail choice.")
+                except requests.exceptions.RequestException as e:
+                    print(f"⚠️ Error fetching flight for {formatted_date} to {iata}: {e}")
