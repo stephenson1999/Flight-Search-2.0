@@ -70,8 +70,9 @@ class FlightSearch:
     def get_flights(self, city_data):
         start_date = datetime.today() + timedelta(days=14)
         months_ahead = 6
-        children = input("Step Two: Please enter the number of children you have:")
-        adults = input("Step Three: Please enter the number of adults you have:")
+        adults = int(input("Step Three: Please enter the number of adults you have: "))
+        children = int(input("Step Two: Please enter the number of children you have: "))
+        infants = int(input("Step Four: Please enter the number of infants you have: "))
         flight_details = input(
             "Step Four: Please enter if you want this flight to be:\n"
             "nonstop   multi-leg   both \n"
@@ -115,8 +116,10 @@ class FlightSearch:
                     'destinationLocationCode': iata,
                     'departureDate': formatted_date,
                     'adults': adults,
+                    'infants' : infants,
                     'children': children,
                     'travelClass': 'ECONOMY',
+                    'oneWay': 'true',
                     'currencyCode': 'USD',
                     'max': 5 if flight_details != 'nonstop' else 1
                 }
