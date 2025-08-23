@@ -45,12 +45,12 @@ sheet_data = [
     {"id": 37, "city": "Delhi", "iataCode": "", "lowestPrice": 300},
     {"id": 38, "city": "Lima", "iataCode": "", "lowestPrice": 300},
     {"id": 39, "city": "Santiago", "iataCode": "", "lowestPrice": 300},
-    {"id": 40, "city": "Cairo", "iataCode": "", "lowestPrice": 300}
+    {"id": 40, "city": "Cairo", "iataCode": "", "lowestPrice": 300},
 ]
 
 
-ONIGIN_IATA = input("Step One: Please enter the Iata Code of you airport that you wish to departure (Fomate = Xxx):")
-print("Please wait a minute. ")
+
+print("Please wait a minute... ")
 start_date =datetime.today() + timedelta(days=1)
 end_date = datetime.today() + timedelta(days=180)
 departure_start = start_date.strftime("%Y-%m-%d")

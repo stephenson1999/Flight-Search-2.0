@@ -3,7 +3,7 @@ import os
 import requests
 import random
 from datetime import datetime, timedelta
-import pprint
+import time
 
 class FlightSearch:
     def __init__(self):
@@ -39,64 +39,41 @@ class FlightSearch:
             print(f"❌ Could not find IATA code for: {city_name}")
             return ""
 
-    def get_monthly_dates(self, start_date, months=6, day=15):
-        dates = []
-        year = start_date.year
-        month = start_date.month
-
-        for _ in range(months):
-            if month > 12:
-                month -= 12
-                year += 1
-
-            # Try to create the date for the chosen day in this month
-            try:
-                date = datetime(year, month, day)
-            except ValueError:
-                # If day does not exist in the month (e.g., Feb 30), use last day of the month
-                if month == 12:
-                    next_month = datetime(year + 1, 1, 1)
-                else:
-                    next_month = datetime(year, month + 1, 1)
-                date = next_month - timedelta(days=1)
-
-            if date >= start_date:
-                dates.append(date)
-
-            month += 1
-
-        return dates
-
     def get_flights(self, city_data):
         start_date = datetime.today() + timedelta(days=14)
         months_ahead = 6
-        adults = int(input("Step Three: Please enter the number of adults you have: "))
+        interval = 3  # Search every 3 months
+
+        one = input("Step One: Please enter the Iata Code of you airport that you wish to departure:")
+        flight_iata = one.upper()
+        print(flight_iata)
         children = int(input("Step Two: Please enter the number of children you have: "))
-        infants = int(input("Step Four: Please enter the number of infants you have: "))
+        adults = int(input("Step Three: Please enter the number of adults you have: "))
         flight_details = input(
             "Step Four: Please enter if you want this flight to be:\n"
             "nonstop   multi-leg   both \n"
         ).strip().lower()
 
-        # Generate one date per month (15th of each month)
+        if flight_details not in ["nonstop", "multi-leg", "both"]:
+            print("Sorry, invalid choice. Please retry.")
+            return
+
+        # Generate search dates every 3 months on the 15th day
         search_dates = []
-        for i in range(months_ahead):
-            year = (start_date.month + i - 1) // 12 + start_date.year
-            month = (start_date.month + i - 1) % 12 + 1
+        for i in range(0, months_ahead, interval):
+            month = start_date.month + i
+            year = start_date.year + (month - 1) // 12
+            month = ((month - 1) % 12) + 1
             try:
                 date = datetime(year, month, 15)
             except ValueError:
-                # Use last day of month if 15th invalid
+                # Handle invalid dates like Feb 30
                 if month == 12:
                     next_month = datetime(year + 1, 1, 1)
                 else:
                     next_month = datetime(year, month + 1, 1)
                 date = next_month - timedelta(days=1)
             search_dates.append(date)
-
-        if flight_details not in ["nonstop", "multi-leg", "both"]:
-            print("Sorry, invalid choice. Please retry.")
-            return  # or loop again if you want
 
         for city_id in city_data:
             data = city_data[city_id]
@@ -112,23 +89,23 @@ class FlightSearch:
 
                 headers = {'Authorization': f'Bearer {self.token}'}
                 params = {
-                    'originLocationCode': 'LAX',
+                    'originLocationCode': flight_iata,
                     'destinationLocationCode': iata,
                     'departureDate': formatted_date,
                     'adults': adults,
-                    'infants' : infants,
                     'children': children,
                     'travelClass': 'ECONOMY',
                     'oneWay': 'true',
                     'currencyCode': 'USD',
                     'max': 5 if flight_details != 'nonstop' else 1
                 }
-                # Add nonStop param only if searching nonstop flights exclusively
                 if flight_details == "nonstop":
                     params['nonStop'] = 'true'
 
                 try:
                     response = requests.get(self.search_url, headers=headers, params=params)
+                    num = random.randint(25, 30)
+                    time.sleep(num)
                     response.raise_for_status()
                     flights = response.json()
 
@@ -142,16 +119,12 @@ class FlightSearch:
                         total_price = float(price_info["total"])
                         currency = price_info["currency"]
 
-                        # Filter logic by flight_details type:
                         if flight_details == "nonstop":
-                            # All offers here are nonstop (due to param)
                             if total_price < float(low_price):
                                 found_deal = True
                             else:
                                 continue
-
                         elif flight_details == "multi-leg":
-                            # Only print if itinerary has >1 segment
                             multi_leg_itineraries = [
                                 it for it in flight_offer["itineraries"] if len(it["segments"]) > 1
                             ]
@@ -161,18 +134,15 @@ class FlightSearch:
                                 found_deal = True
                             else:
                                 continue
-
                         else:  # both
                             if total_price < float(low_price):
                                 found_deal = True
                             else:
                                 continue
 
-                        # Print flight offer details
                         print(f"\n🔥 Breaking Deal! {city} - {total_price} {currency}")
                         print(f"Price: {total_price} {currency}")
                         print("Itinerary:")
-                        # If multi-leg only, print only multi-leg itineraries
                         itineraries_to_print = flight_offer["itineraries"]
                         if flight_details == "multi-leg":
                             itineraries_to_print = [
